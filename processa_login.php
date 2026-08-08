@@ -13,9 +13,7 @@ $senha = trim($_POST["senha"]);
 $sql = "SELECT * FROM usuarios WHERE usuario = :usuario LIMIT 1";
 
 $stmt = $pdo->prepare($sql);
-
 $stmt->bindValue(":usuario", $usuario);
-
 $stmt->execute();
 
 if ($stmt->rowCount() == 1) {
@@ -29,19 +27,12 @@ if ($stmt->rowCount() == 1) {
         $_SESSION["usuario"] = $dados["usuario"];
         $_SESSION["tipo"] = $dados["tipo"];
 
-        header("Location: dashboard.php");
-        exit;
-
-    } else {
-
-        header("Location: login.php?erro=1");
+        header("Location: pages/dashboard.php");
         exit;
 
     }
 
-} else {
-
-    header("Location: login.php?erro=1");
-    exit;
-
 }
+
+header("Location: login.php?erro=1");
+exit;

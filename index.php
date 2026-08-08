@@ -1,15 +1,13 @@
 <?php
 
-session_start();
+require "config.php";
 
-if(isset($_SESSION["usuario"])){
+if (isset($_SESSION["id"])) {
 
-    header("Location: dashboard.php");
-
-}else{
-
-    header("Location: login.php");
+    header("Location: pages/dashboard.php");
+    exit;
 
 }
 
+header("Location: login.php");
 exit;
