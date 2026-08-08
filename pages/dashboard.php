@@ -400,16 +400,63 @@ foreach ($formas as $forma) {
             <p class="text-muted mb-0">Olá, <strong><?= e($_SESSION["nome"] ?? "") ?></strong>. Controle de <?= e($meses[$mes]) ?> de <?= e($ano) ?>.</p>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
-            <form method="get" class="d-flex gap-2">
-                <select name="mes" class="form-select" onchange="this.form.submit()" aria-label="Mês">
-                    <?php foreach ($meses as $numero => $nome): ?>
-                        <option value="<?= $numero ?>" <?= $numero === $mes ? "selected" : "" ?>><?= e($nome) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <input type="number" name="ano" value="<?= $ano ?>" min="2000" max="2100" class="form-control" style="width: 100px" onchange="this.form.submit()" aria-label="Ano">
-            </form>
-            <a href="../logout.php" class="btn btn-outline-danger">Sair</a>
-        </div>
+
+    <form method="get" class="d-flex gap-2">
+
+        <select
+        name="mes"
+        class="form-select"
+        onchange="this.form.submit()"
+        aria-label="Mês">
+
+            <?php foreach ($meses as $numero => $nome): ?>
+
+                <option
+                value="<?= $numero ?>"
+                <?= $numero === $mes ? "selected" : "" ?>>
+
+                    <?= e($nome) ?>
+
+                </option>
+
+            <?php endforeach; ?>
+
+        </select>
+
+        <input
+        type="number"
+        name="ano"
+        value="<?= $ano ?>"
+        min="2000"
+        max="2100"
+        class="form-control"
+        style="width:100px"
+        onchange="this.form.submit()"
+        aria-label="Ano">
+
+    </form>
+
+    <?php if(strtolower($_SESSION["tipo"])=="admin"): ?>
+
+        <a
+        href="usuarios.php"
+        class="btn btn-outline-primary">
+
+            👥 Usuários
+
+        </a>
+
+    <?php endif; ?>
+
+    <a
+    href="../logout.php"
+    class="btn btn-outline-danger">
+
+        Sair
+
+    </a>
+
+</div>
     </header>
 
     <?php if (strtolower($_SESSION["tipo"]) == "admin"): ?>
@@ -471,7 +518,7 @@ foreach ($formas as $forma) {
                     $faturaPaga = !empty($fatura["pago"]);
                 ?>
                 <div class="col-12 col-xl-6">
-                    <article class="card app-card invoice-card h-100">
+                    <article class="card app-card invoice-card h-100 shadow-sm">
                         <div class="invoice-header p-4 d-flex flex-column flex-md-row justify-content-between">
                             <div><h3 class="h5 mb-1">💳 <?= e($forma["nome"]) ?></h3><span class="opacity-75 small"><?= count($lista) ?> compra(s) no mês</span></div>
                             <div class="text-md-end"><div class="invoice-total"><?= valorBrasileiro($totalDaForma) ?></div><div class="small opacity-75">Total da fatura</div></div>
