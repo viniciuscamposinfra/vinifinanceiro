@@ -5,8 +5,8 @@ session_start();
 $host = "br1026.hostgator.com.br";
 $porta = "3306";
 $banco = "vin25708_financeiro";
-$usuario = "cpses_viuq11t223";
-$senha = "A;^UnigT{BF4#~UP";
+$usuario = "vin25708_admin";
+$senha = "Buhi#uhihfvi5445";
 
 try {
 
