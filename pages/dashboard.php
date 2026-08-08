@@ -63,6 +63,8 @@ if(isset($_POST["salvar_salario"])){
 
 if(isset($_POST["salvar_compra"])){
 
+    $id = (int)$_POST["id"];
+
     $descricao = trim($_POST["descricao"]);
     $categoria = trim($_POST["categoria"]);
     $valor = str_replace(",",".",$_POST["valor"]);
@@ -71,41 +73,123 @@ if(isset($_POST["salvar_compra"])){
     $data = $_POST["data"];
     $pago = isset($_POST["pago"]) ? 1 : 0;
 
-    $sql = $pdo->prepare("
-        INSERT INTO compras
-        (
-            descricao,
-            categoria,
-            valor,
-            data_compra,
-            pessoa_id,
-            forma_pagamento_id,
-            pago
-        )
-        VALUES
-        (
-            :descricao,
-            :categoria,
-            :valor,
-            :data,
-            :pessoa,
-            :forma,
-            :pago
-        )
-    ");
+    if($id > 0){
 
-    $sql->execute([
-        ":descricao"=>$descricao,
-        ":categoria"=>$categoria,
-        ":valor"=>$valor,
-        ":data"=>$data,
-        ":pessoa"=>$pessoa,
-        ":forma"=>$forma,
-        ":pago"=>$pago
-    ]);
+        $sql = $pdo->prepare("
+            UPDATE compras
+            SET
+                descricao = ?,
+                categoria = ?,
+                valor = ?,
+                data_compra = ?,
+                pessoa_id = ?,
+                forma_pagamento_id = ?,
+                pago = ?
+            WHERE id = ?
+        ");
+
+        $sql->execute([
+            $descricao,
+            $categoria,
+            $valor,
+            $data,
+            $pessoa,
+            $forma,
+            $pago,
+            $id
+        ]);
+
+    }else{
+
+        $sql = $pdo->prepare("
+            INSERT INTO compras
+            (
+                descricao,
+                categoria,
+                valor,
+                data_compra,
+                pessoa_id,
+                forma_pagamento_id,
+                pago
+            )
+            VALUES
+            (
+                ?,?,?,?,?,?,?
+            )
+        ");
+
+        $sql->execute([
+            $descricao,
+            $categoria,
+            $valor,
+            $data,
+            $pessoa,
+            $forma,
+            $pago
+        ]);
+
+    }
 
     header("Location: dashboard.php?mes=".$mes."&ano=".$ano);
+
     exit;
+
+}
+
+/*
+|--------------------------------------------------------------------------
+| EXCLUIR COMPRA
+|--------------------------------------------------------------------------
+*/
+
+if(isset($_GET["excluir"])){
+
+    $id = (int)$_GET["excluir"];
+
+    $sql = $pdo->prepare("DELETE FROM compras WHERE id = ?");
+
+    $sql->execute([$id]);
+
+    header("Location: dashboard.php?mes=".$mes."&ano=".$ano);
+
+    exit;
+
+}
+
+/*
+|--------------------------------------------------------------------------
+| EDITAR COMPRA
+|--------------------------------------------------------------------------
+*/
+
+$editando = false;
+
+$compraEditar = [
+
+    "id" => "",
+    "descricao" => "",
+    "categoria" => "",
+    "valor" => "",
+    "data_compra" => date("Y-m-d"),
+    "pessoa_id" => "",
+    "forma_pagamento_id" => "",
+    "pago" => 0
+
+];
+
+if(isset($_GET["editar"])){
+
+    $editando = true;
+
+    $sql = $pdo->prepare("SELECT * FROM compras WHERE id=?");
+
+    $sql->execute([$_GET["editar"]]);
+
+    if($sql->rowCount()){
+
+        $compraEditar = $sql->fetch(PDO::FETCH_ASSOC);
+
+    }
 
 }
 
@@ -481,7 +565,13 @@ Salvar
 
 <form method="POST" action="">
 
+<input
+    type="hidden"
+    name="id"
+    value="<?= $compraEditar["id"] ?>">
+
 <div class="row">
+
 
 <div class="col-md-4 mb-3">
 
@@ -495,6 +585,7 @@ Descrição
 type="text"
 name="descricao"
 class="form-control"
+value="<?= $compraEditar["descricao"] ?>"
 required>
 
 </div>
@@ -533,20 +624,13 @@ value="<?= $categoria["nome"] ?>">
 
 Valor
 
-</label>
-
 <input
 type="number"
 step="0.01"
 name="valor"
 class="form-control"
+value="<?= $compraEditar["valor"] ?>"
 required>
-
-</div>
-
-<div class="col-md-2 mb-3">
-
-<label class="form-label">
 
 Pessoa
 
@@ -604,29 +688,11 @@ value="<?= $forma["id"] ?>">
 
 Data
 
-</label>
-
 <input
 type="date"
 name="data"
 class="form-control"
-value="<?= date("Y-m-d") ?>">
-
-</div>
-
-<div class="col-md-3 mb-3 d-flex align-items-end">
-
-<div class="form-check">
-
-<input
-class="form-check-input"
-type="checkbox"
-name="pago"
-id="pago">
-
-<label
-class="form-check-label"
-for="pago">
+value="<?= $compraEditar["data_compra"] ?>">
 
 Compra já foi paga
 
@@ -646,7 +712,15 @@ name="salvar_compra"
 
 class="btn btn-success w-100">
 
+<?php if($editando): ?>
+
+✏️ Atualizar Compra
+
+<?php else: ?>
+
 💾 Salvar Compra
+
+<?php endif; ?>
 
 </button>
 
@@ -775,19 +849,22 @@ Pendente
 
 <td class="text-center">
 
-<button
+<a
+href="dashboard.php?mes=<?= $mes ?>&ano=<?= $ano ?>&editar=<?= $compra["id"] ?>"
 class="btn btn-sm btn-primary">
 
 ✏️
 
-</button>
+</a>
 
-<button
-class="btn btn-sm btn-danger">
+<a
+href="dashboard.php?mes=<?= $mes ?>&ano=<?= $ano ?>&excluir=<?= $compra["id"] ?>"
+class="btn btn-sm btn-danger"
+onclick="return confirm('Deseja excluir esta compra?')">
 
 🗑️
 
-</button>
+</a>
 
 </td>
 
