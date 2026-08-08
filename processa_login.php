@@ -26,6 +26,7 @@ if ($stmt->rowCount() == 1) {
         $_SESSION["nome"] = $dados["nome"];
         $_SESSION["usuario"] = $dados["usuario"];
         $_SESSION["tipo"] = $dados["tipo"];
+        $_SESSION["pessoa_id"] = $dados["pessoa_id"];
 
         header("Location: pages/dashboard.php");
         exit;
