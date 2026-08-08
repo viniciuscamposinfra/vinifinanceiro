@@ -738,9 +738,9 @@ class="btn btn-success w-100">
 
 <div class="card-body">
 
-<h4 class="mb-3">
+<h4 class="mb-4">
 
-📋 Compras do mês
+💳 Compras por Forma de Pagamento
 
 </h4>
 <?php if(count($compras)==0): ?>
