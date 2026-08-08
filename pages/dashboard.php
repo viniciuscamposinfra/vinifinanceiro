@@ -63,15 +63,15 @@ if(isset($_POST["salvar_salario"])){
 
 if(isset($_POST["salvar_compra"])){
 
-    $descricao = $_POST["descricao"];
-    $categoria = $_POST["categoria"];
+    $descricao = trim($_POST["descricao"]);
+    $categoria = trim($_POST["categoria"]);
     $valor = str_replace(",",".",$_POST["valor"]);
-    $pessoa = $_POST["pessoa"];
-    $forma = $_POST["forma"];
+    $pessoa = (int)$_POST["pessoa"];
+    $forma = (int)$_POST["forma"];
     $data = $_POST["data"];
     $pago = isset($_POST["pago"]) ? 1 : 0;
 
-    $pdo->prepare("
+    $sql = $pdo->prepare("
         INSERT INTO compras
         (
             descricao,
@@ -84,16 +84,24 @@ if(isset($_POST["salvar_compra"])){
         )
         VALUES
         (
-            ?,?,?,?,?,?,?
+            :descricao,
+            :categoria,
+            :valor,
+            :data,
+            :pessoa,
+            :forma,
+            :pago
         )
-    ")->execute([
-        $descricao,
-        $categoria,
-        $valor,
-        $data,
-        $pessoa,
-        $forma,
-        $pago
+    ");
+
+    $sql->execute([
+        ":descricao"=>$descricao,
+        ":categoria"=>$categoria,
+        ":valor"=>$valor,
+        ":data"=>$data,
+        ":pessoa"=>$pessoa,
+        ":forma"=>$forma,
+        ":pago"=>$pago
     ]);
 
     header("Location: dashboard.php?mes=".$mes."&ano=".$ano);
@@ -471,7 +479,7 @@ Salvar
 
 </h4>
 
-<form method="POST">
+<form method="POST" action="">
 
 <div class="row">
 
