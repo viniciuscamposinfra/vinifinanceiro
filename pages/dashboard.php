@@ -339,13 +339,39 @@ $pessoas = $pdo->query("SELECT * FROM pessoas ORDER BY nome")->fetchAll(PDO::FET
 $formas = $pdo->query("SELECT * FROM formas_pagamento ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $categorias = $pdo->query("SELECT * FROM categorias ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 
+/* Total gasto (geral para exibição) */
 $consulta = $pdo->prepare(
-    "SELECT COALESCE(SUM(c.valor), 0) FROM compras c
-     WHERE MONTH(c.data_compra) = ? AND YEAR(c.data_compra) = ?" . $filtroPessoa
+    "SELECT COALESCE(SUM(c.valor), 0)
+     FROM compras c
+     WHERE MONTH(c.data_compra) = ?
+       AND YEAR(c.data_compra) = ?" . $filtroPessoa
 );
+
 $consulta->execute(array_merge([$mes, $ano], $parametrosPessoa));
+
 $totalGasto = (float)$consulta->fetchColumn();
-$saldo = $salario - $totalGasto - $valorGuardar;
+
+/* Total gasto somente do usuário logado */
+$consulta = $pdo->prepare(
+    "SELECT COALESCE(SUM(c.valor), 0)
+     FROM compras c
+     WHERE MONTH(c.data_compra) = ?
+       AND YEAR(c.data_compra) = ?
+       AND c.pessoa_id = ?"
+);
+
+$consulta->execute([
+    $mes,
+    $ano,
+    $pessoaId
+]);
+
+$totalGastoUsuario = (float)$consulta->fetchColumn();
+
+/* O saldo sempre considera apenas os gastos do usuário logado */
+$saldo = $salario - $totalGastoUsuario - $valorGuardar;
+
+/* Média por dia usando o saldo do usuário */
 $mediaFimDeSemana = $diasFimDeSemana > 0 ? $saldo / $diasFimDeSemana : 0;
 
 $consulta = $pdo->prepare(
@@ -476,7 +502,7 @@ if (isset($_GET["editar"])) {
     <?php if ($ehAdmin): ?>
     <section class="row g-3 mb-4">
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💵 Salário</div><div class="summary-value text-success mt-2 valor-financeiro"><?= valorBrasileiro($salario) ?></div></div></div></div>
-        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGasto) ?></div></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGastoUsuario) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">✅ Faturas pagas</div><div class="summary-value text-primary mt-2 valor-financeiro"><?= valorBrasileiro($totalFaturasPagas) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">🏦 Guardar / investir</div><div class="summary-value text-info mt-2 valor-financeiro"><?= valorBrasileiro($valorGuardar) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💰 Saldo final</div><div class="summary-value <?= $saldo >= 0 ? "text-success" : "text-danger" ?> mt-2 valor-financeiro"><?= valorBrasileiro($saldo) ?></div></div></div></div>
@@ -484,7 +510,7 @@ if (isset($_GET["editar"])) {
     </section>
     <?php else: ?>
     <section class="row g-3 mb-4">
-        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGasto) ?></div></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGastoUsuario) ?></div></div></div></div>
     </section>
     <?php endif; ?>
 
