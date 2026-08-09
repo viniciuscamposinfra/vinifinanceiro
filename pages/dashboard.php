@@ -225,11 +225,13 @@ if ($ehAdmin && isset($_POST["salvar_compra"])) {
     $descricao = trim($_POST["descricao"] ?? "");
     $categoria = trim($_POST["categoria"] ?? "");
     $valor = normalizarValor($_POST["valor"] ?? 0);
-    $data = $_POST["data"] ?? date("Y-m-d");
+    $data = !empty($_POST["data"]) ? $_POST["data"] : date("Y-m-d");
     $formaId = (int)($_POST["forma"] ?? 0);
     $pessoaCompraId = $ehAdmin ? (int)($_POST["pessoa"] ?? 0) : $pessoaId;
+    $contaCompartilhada = !$id && isset($_POST["conta_compartilhada"]);
+    $pessoaCompartilhadaId = $contaCompartilhada ? (int)($_POST["pessoa_compartilhada"] ?? 0) : 0;
 
-    if ($descricao !== "" && $categoria !== "" && $valor > 0 && $formaId > 0 && $pessoaCompraId > 0) {
+    if ($descricao !== "" && $valor > 0 && $formaId > 0 && $pessoaCompraId > 0 && (!$contaCompartilhada || ($pessoaCompartilhadaId > 0 && $pessoaCompartilhadaId !== $pessoaCompraId))) {
         if ($id > 0) {
             $sql = "UPDATE compras SET descricao = ?, categoria = ?, valor = ?, data_compra = ?, forma_pagamento_id = ?";
             $parametros = [$descricao, $categoria, $valor, $data, $formaId];
@@ -258,7 +260,11 @@ if ($ehAdmin && isset($_POST["salvar_compra"])) {
                     (descricao, categoria, valor, data_compra, pessoa_id, forma_pagamento_id, pago, parcela_atual, total_parcelas, compra_principal)
                     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)"
                 );
-                $principal = null;
+                $pessoasDestino = [$pessoaCompraId];
+                if ($contaCompartilhada) {
+                    $pessoasDestino[] = $pessoaCompartilhadaId;
+                }
+                $principais = [];
 
                 for ($parcela = 1; $parcela <= $parcelas; $parcela++) {
                     $dataParcela = clone $dataInicial;
@@ -267,19 +273,21 @@ if ($ehAdmin && isset($_POST["salvar_compra"])) {
                         ? round($valor - ($valorParcela * ($parcelas - 1)), 2)
                         : $valorParcela;
 
-                    $inserir->execute([
-                        $descricao, $categoria, $valorDaParcela, $dataParcela->format("Y-m-d"),
-                        $pessoaCompraId, $formaId,
-                        $parcelas > 1 ? $parcela : null,
-                        $parcelas > 1 ? $parcelas : null,
-                        $principal
-                    ]);
+                    foreach ($pessoasDestino as $pessoaDestinoId) {
+                        $inserir->execute([
+                            $descricao, $categoria, $valorDaParcela, $dataParcela->format("Y-m-d"),
+                            $pessoaDestinoId, $formaId,
+                            $parcelas > 1 ? $parcela : null,
+                            $parcelas > 1 ? $parcelas : null,
+                            $principais[$pessoaDestinoId] ?? null
+                        ]);
 
-                    if ($principal === null) {
-                        $principal = (int)$pdo->lastInsertId();
-                        if ($parcelas > 1) {
-                            $pdo->prepare("UPDATE compras SET compra_principal = ? WHERE id = ?")
-                                ->execute([$principal, $principal]);
+                        if (!isset($principais[$pessoaDestinoId])) {
+                            $principais[$pessoaDestinoId] = (int)$pdo->lastInsertId();
+                            if ($parcelas > 1) {
+                                $pdo->prepare("UPDATE compras SET compra_principal = ? WHERE id = ?")
+                                    ->execute([$principais[$pessoaDestinoId], $principais[$pessoaDestinoId]]);
+                            }
                         }
                     }
                 }
@@ -448,6 +456,24 @@ if (isset($_GET["editar"])) {
     </header>
 
     <?php if ($ehAdmin): ?>
+    <section class="card app-card mb-4"><div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0"><?= $editando ? "✏️ Editar compra" : "🛒 Nova compra" ?></h2><?php if ($editando): ?><a href="dashboard.php?mes=<?= $mes ?>&ano=<?= $ano ?>" class="btn btn-sm btn-outline-secondary">Cancelar</a><?php endif; ?></div>
+        <form method="post" class="row g-3"><input type="hidden" name="mes" value="<?= $mes ?>"><input type="hidden" name="ano" value="<?= $ano ?>"><input type="hidden" name="id" value="<?= e($compraEditar["id"]) ?>">
+            <div class="col-md-3"><label class="form-label">Descrição</label><input name="descricao" class="form-control" required value="<?= e($compraEditar["descricao"]) ?>"></div>
+            <div class="col-md-2"><label class="form-label">Categoria <span class="text-muted">(opcional)</span></label><select name="categoria" class="form-select"><option value="">Sem categoria</option><?php foreach ($categorias as $categoria): ?><option value="<?= e($categoria["nome"]) ?>" <?= $categoria["nome"] === $compraEditar["categoria"] ? "selected" : "" ?>><?= e($categoria["nome"]) ?></option><?php endforeach; ?></select></div>
+            <div class="col-md-2"><label class="form-label">Pessoa</label><select name="pessoa" class="form-select" required><option value="">Selecione</option><?php foreach ($pessoas as $pessoa): ?><option value="<?= $pessoa["id"] ?>" <?= (string)$pessoa["id"] === (string)$compraEditar["pessoa_id"] ? "selected" : "" ?>><?= e($pessoa["nome"]) ?></option><?php endforeach; ?></select></div>
+            <div class="col-md-2"><label class="form-label">Forma</label><select name="forma" class="form-select" required><option value="">Selecione</option><?php foreach ($formas as $forma): ?><option value="<?= $forma["id"] ?>" <?= (string)$forma["id"] === (string)$compraEditar["forma_pagamento_id"] ? "selected" : "" ?>><?= e($forma["nome"]) ?></option><?php endforeach; ?></select></div>
+            <div class="col-md-2"><label class="form-label">Data <span class="text-muted">(opcional)</span></label><input type="date" name="data" value="<?= $editando ? e($compraEditar["data_compra"]) : "" ?>" class="form-control"></div>
+            <div class="col-md-2"><label class="form-label" id="rotulo-valor">Valor</label><input type="number" step="0.01" min="0.01" name="valor" value="<?= $editando ? e(number_format((float)$compraEditar["valor"], 2, ".", "")) : "" ?>" class="form-control" required></div>
+            <div class="col-md-2"><label class="form-label">Parcelas</label><input type="number" min="1" max="360" name="total_parcelas" value="<?= e($compraEditar["total_parcelas"] ?: 1) ?>" class="form-control" <?= $editando ? "readonly" : "" ?>></div>
+            <?php if (!$editando): ?><div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="valor_total" id="valor_total" checked><label id="label-valor-total" class="form-check-label" for="valor_total">Valor total da compra</label></div></div><?php endif; ?>
+            <?php if (!$editando): ?><div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="conta_compartilhada" id="conta_compartilhada" onchange="alternarContaCompartilhada()"><label class="form-check-label" for="conta_compartilhada">Conta compartilhada</label></div></div><div id="campo-pessoa-compartilhada" class="col-md-3 d-none"><label class="form-label">Outra pessoa</label><select name="pessoa_compartilhada" class="form-select"><option value="">Selecione</option><?php foreach ($pessoas as $pessoa): ?><option value="<?= $pessoa["id"] ?>"><?= e($pessoa["nome"]) ?></option><?php endforeach; ?></select><div class="form-text">O valor informado será lançado para cada pessoa.</div></div><?php endif; ?>
+            <div class="col-md-3 d-flex align-items-end"><button name="salvar_compra" class="btn btn-primary w-100"><?= $editando ? "Atualizar compra" : "Salvar compra" ?></button></div>
+        </form>
+    </div></section>
+    <?php endif; ?>
+
+    <?php if ($ehAdmin): ?>
     <section class="row g-3 mb-4">
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💵 Salário</div><div class="summary-value text-success mt-2 valor-financeiro"><?= valorBrasileiro($salario) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGasto) ?></div></div></div></div>
@@ -505,7 +531,7 @@ if (isset($_GET["editar"])) {
     </div></section>
     <?php endif; ?>
 
-    <?php if ($ehAdmin): ?>
+    <?php if (false): ?>
     <section class="card app-card mb-4"><div class="card-body p-4">
         <div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0"><?= $editando ? "✏️ Editar compra" : "🛒 Nova compra" ?></h2><?php if ($editando): ?><a href="dashboard.php?mes=<?= $mes ?>&ano=<?= $ano ?>" class="btn btn-sm btn-outline-secondary">Cancelar</a><?php endif; ?></div>
         <form method="post" class="row g-3"><input type="hidden" name="mes" value="<?= $mes ?>"><input type="hidden" name="ano" value="<?= $ano ?>"><input type="hidden" name="id" value="<?= e($compraEditar["id"]) ?>">
@@ -589,6 +615,17 @@ if (isset($_GET["editar"])) {
 </main>
 <script>
     const chaveOcultarValores = "financeiro_ocultar_valores";
+
+    function alternarContaCompartilhada() {
+        const marcada = document.getElementById("conta_compartilhada").checked;
+        const campoPessoa = document.getElementById("campo-pessoa-compartilhada");
+        const rotuloValor = document.getElementById("rotulo-valor");
+        campoPessoa.classList.toggle("d-none", !marcada);
+        rotuloValor.textContent = marcada ? "Valor para cada pessoa" : "Valor";
+        document.getElementById("label-valor-total").textContent = marcada
+            ? "Valor total por pessoa (se houver parcelas)"
+            : "Valor total da compra";
+    }
 
     function aplicarOcultacao(ocultar) {
         document.querySelectorAll(".valor-financeiro").forEach(function (campo) {
