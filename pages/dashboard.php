@@ -88,6 +88,8 @@ $parametrosPessoa = !$ehAdmin ? [$pessoaId] : [];
    associá-lo à pessoa. Detectamos isso sem exigir alteração de banco. */
 $configuracoesTemPessoaId = colunaExiste($pdo, "configuracoes", "pessoa_id");
 $temSolicitacoesAjuste = colunaExiste($pdo, "solicitacoes_ajuste", "id");
+$temReservasMensais = colunaExiste($pdo, "reservas_mensais", "id");
+$reservasTemDiasRestantes = colunaExiste($pdo, "reservas_mensais", "dias_fim_semana");
 
 /* SALÁRIO --------------------------------------------------------------- */
 if ($ehAdmin && !$configuracoesTemPessoaId && isset($_POST["salvar_salario"])) {
@@ -101,6 +103,34 @@ if ($ehAdmin && !$configuracoesTemPessoaId && isset($_POST["salvar_salario"])) {
     } else {
         $pdo->prepare("INSERT INTO configuracoes (mes, ano, salario) VALUES (?, ?, ?)")
             ->execute([$mes, $ano, $salarioNovo]);
+    }
+
+    redirecionarMes($mes, $ano);
+}
+
+/* GUARDAR / INVESTIR ---------------------------------------------------- */
+if ($ehAdmin && $temReservasMensais && isset($_POST["salvar_reserva"])) {
+    $valorGuardar = normalizarValor($_POST["valor_guardar"] ?? 0);
+    $diasFimDeSemana = max(0, min(8, (int)($_POST["dias_fim_semana"] ?? 8)));
+    $consulta = $pdo->prepare("SELECT id FROM reservas_mensais WHERE mes = ? AND ano = ? LIMIT 1");
+    $consulta->execute([$mes, $ano]);
+
+    if ($consulta->fetchColumn()) {
+        if ($reservasTemDiasRestantes) {
+            $pdo->prepare("UPDATE reservas_mensais SET valor = ?, dias_fim_semana = ? WHERE mes = ? AND ano = ?")
+                ->execute([$valorGuardar, $diasFimDeSemana, $mes, $ano]);
+        } else {
+            $pdo->prepare("UPDATE reservas_mensais SET valor = ? WHERE mes = ? AND ano = ?")
+                ->execute([$valorGuardar, $mes, $ano]);
+        }
+    } else {
+        if ($reservasTemDiasRestantes) {
+            $pdo->prepare("INSERT INTO reservas_mensais (mes, ano, valor, dias_fim_semana) VALUES (?, ?, ?, ?)")
+                ->execute([$mes, $ano, $valorGuardar, $diasFimDeSemana]);
+        } else {
+            $pdo->prepare("INSERT INTO reservas_mensais (mes, ano, valor) VALUES (?, ?, ?)")
+                ->execute([$mes, $ano, $valorGuardar]);
+        }
     }
 
     redirecionarMes($mes, $ano);
@@ -282,6 +312,21 @@ if ($ehAdmin && $configuracoesTemPessoaId) {
    não possui salário por pessoa. */
 $salario = ($ehAdmin || $configuracoesTemPessoaId) ? (float)($consulta->fetchColumn() ?: 0) : 0;
 
+$valorGuardar = 0;
+$diasFimDeSemana = 8;
+if ($ehAdmin && $temReservasMensais) {
+    $camposReserva = $reservasTemDiasRestantes ? "valor, dias_fim_semana" : "valor";
+    $consulta = $pdo->prepare("SELECT $camposReserva FROM reservas_mensais WHERE mes = ? AND ano = ? LIMIT 1");
+    $consulta->execute([$mes, $ano]);
+    $reserva = $consulta->fetch(PDO::FETCH_ASSOC);
+    if ($reserva) {
+        $valorGuardar = (float)$reserva["valor"];
+        if ($reservasTemDiasRestantes) {
+            $diasFimDeSemana = max(0, (int)$reserva["dias_fim_semana"]);
+        }
+    }
+}
+
 $pessoas = $pdo->query("SELECT * FROM pessoas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $formas = $pdo->query("SELECT * FROM formas_pagamento ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $categorias = $pdo->query("SELECT * FROM categorias ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
@@ -292,7 +337,8 @@ $consulta = $pdo->prepare(
 );
 $consulta->execute(array_merge([$mes, $ano], $parametrosPessoa));
 $totalGasto = (float)$consulta->fetchColumn();
-$saldo = $salario - $totalGasto;
+$saldo = $salario - $totalGasto - $valorGuardar;
+$mediaFimDeSemana = $diasFimDeSemana > 0 ? $saldo / $diasFimDeSemana : 0;
 
 $consulta = $pdo->prepare(
     "SELECT c.*, p.nome AS pessoa, fp.nome AS forma
@@ -406,7 +452,9 @@ if (isset($_GET["editar"])) {
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💵 Salário</div><div class="summary-value text-success mt-2 valor-financeiro"><?= valorBrasileiro($salario) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💸 Total gasto</div><div class="summary-value text-danger mt-2 valor-financeiro"><?= valorBrasileiro($totalGasto) ?></div></div></div></div>
         <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">✅ Faturas pagas</div><div class="summary-value text-primary mt-2 valor-financeiro"><?= valorBrasileiro($totalFaturasPagas) ?></div></div></div></div>
-        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💰 Saldo</div><div class="summary-value <?= $saldo >= 0 ? "text-success" : "text-danger" ?> mt-2 valor-financeiro"><?= valorBrasileiro($saldo) ?></div></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">🏦 Guardar / investir</div><div class="summary-value text-info mt-2 valor-financeiro"><?= valorBrasileiro($valorGuardar) ?></div></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">💰 Saldo final</div><div class="summary-value <?= $saldo >= 0 ? "text-success" : "text-danger" ?> mt-2 valor-financeiro"><?= valorBrasileiro($saldo) ?></div></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card app-card summary-card"><div class="card-body"><div class="summary-label">📅 Média por dia do fim de semana</div><div class="summary-value <?= $mediaFimDeSemana >= 0 ? "text-success" : "text-danger" ?> mt-2 valor-financeiro"><?= valorBrasileiro($mediaFimDeSemana) ?></div><div class="small text-muted mt-1">Saldo final ÷ <?= $diasFimDeSemana ?> dia(s) restante(s)</div></div></div></div>
     </section>
     <?php else: ?>
     <section class="row g-3 mb-4">
@@ -424,6 +472,20 @@ if (isset($_GET["editar"])) {
     </div></section>
     <?php endif; ?>
 
+    <?php if ($ehAdmin && $temReservasMensais): ?>
+    <section class="card app-card mb-4"><div class="card-body p-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div><h2 class="h5 mb-1">🏦 Guardar / investir</h2><p class="text-muted small mb-0">Ajuste o valor guardado e os dias de fim de semana restantes quando quiser.</p></div>
+            <span class="text-muted small"><?= e($meses[$mes]) ?>/<?= $ano ?></span>
+        </div>
+        <form method="post" class="row g-2 align-items-end">
+            <div class="col-sm-4 col-md-3"><label class="form-label">Valor do mês</label><input type="number" step="0.01" min="0" name="valor_guardar" value="<?= e(number_format($valorGuardar, 2, ".", "")) ?>" class="form-control" required></div>
+            <div class="col-sm-4 col-md-3"><label class="form-label">Dias de fim de semana restantes</label><input type="number" min="0" max="8" name="dias_fim_semana" value="<?= $diasFimDeSemana ?>" class="form-control" required></div>
+            <div class="col-sm-auto"><button name="salvar_reserva" class="btn btn-info">Salvar</button></div>
+        </form>
+    </div></section>
+    <?php endif; ?>
+
     <?php if ($ehAdmin && $temSolicitacoesAjuste): ?>
     <section class="card app-card mb-4"><div class="card-body p-4">
         <h2 class="h5 mb-3">🔔 Solicitações de correção de valor</h2>
@@ -433,8 +495,8 @@ if (isset($_GET["editar"])) {
                 <tbody><?php foreach ($solicitacoesPendentes as $solicitacao): ?><tr>
                     <td><?= e($solicitacao["pessoa"]) ?></td>
                     <td><?= e($solicitacao["descricao"]) ?></td>
-                    <td class="valor-financeiro"><?= valorBrasileiro($solicitacao["valor_atual"]) ?></td>
-                    <td class="valor-financeiro fw-bold"><?= valorBrasileiro($solicitacao["valor_solicitado"]) ?></td>
+                    <td><?= valorBrasileiro($solicitacao["valor_atual"]) ?></td>
+                    <td class="fw-bold"><?= valorBrasileiro($solicitacao["valor_solicitado"]) ?></td>
                     <td><?= e($solicitacao["observacao"] ?: "—") ?></td>
                     <td><form method="post" class="d-flex gap-1"><input type="hidden" name="solicitacao_id" value="<?= $solicitacao["id"] ?>"><button name="analisar_ajuste" value="1" type="submit" class="btn btn-sm btn-success" onclick="this.form.decisao.value='aprovada'">Aprovar</button><button name="analisar_ajuste" value="1" type="submit" class="btn btn-sm btn-outline-danger" onclick="this.form.decisao.value='recusada'">Recusar</button><input type="hidden" name="decisao" value=""></form></td>
                 </tr><?php endforeach; ?></tbody>
@@ -464,9 +526,9 @@ if (isset($_GET["editar"])) {
     <section><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h4 mb-0">💳 Compras por forma de pagamento</h2><span class="text-muted small"><?= count($compras) ?> lançamento(s)</span></div><div class="row g-4">
         <?php foreach ($formas as $forma): $formaId = (int)$forma["id"]; $lista = $comprasPorForma[$formaId]; $totalForma = array_sum(array_column($lista, "valor")); $fatura = $faturas[$formaId] ?? null; $faturaPaga = !empty($fatura["pago"]); ?>
         <div class="col-12 col-xl-6"><article class="card app-card overflow-hidden h-100">
-            <div class="invoice-header p-4 d-flex justify-content-between"><div><h3 class="h5 mb-1">💳 <?= e($forma["nome"]) ?></h3><span class="small opacity-75"><?= count($lista) ?> compra(s)</span></div><div class="text-end"><div class="invoice-total valor-financeiro"><?= valorBrasileiro($totalForma) ?></div><small class="opacity-75">Total da fatura</small></div></div>
+            <div class="invoice-header p-4 d-flex justify-content-between"><div><h3 class="h5 mb-1">💳 <?= e($forma["nome"]) ?></h3><span class="small opacity-75"><?= count($lista) ?> compra(s)</span></div><div class="text-end"><div class="invoice-total"><?= valorBrasileiro($totalForma) ?></div><small class="opacity-75">Total da fatura</small></div></div>
             <div class="p-3 border-bottom d-flex justify-content-between align-items-center"><span class="badge text-bg-<?= $faturaPaga ? "success" : "warning" ?>"><?= $faturaPaga ? "✓ Pago" : "Pendente" ?></span><?php if ($ehAdmin): ?><form method="post"><input type="hidden" name="mes" value="<?= $mes ?>"><input type="hidden" name="ano" value="<?= $ano ?>"><input type="hidden" name="forma_pagamento_id" value="<?= $formaId ?>"><input type="hidden" name="novo_status" value="<?= $faturaPaga ? 0 : 1 ?>"><button name="alterar_fatura" class="btn btn-sm btn-outline-<?= $faturaPaga ? "secondary" : "success" ?>"><?= $faturaPaga ? "Desfazer" : "Marcar como paga" ?></button></form><?php endif; ?></div>
-            <div class="list-group list-group-flush"><?php foreach ($lista as $compra): ?><div class="list-group-item d-flex justify-content-between gap-3"><div><strong><?= e($compra["descricao"]) ?></strong><div class="small text-muted"><?= e($compra["pessoa"]) ?> · <?= date("d/m/Y", strtotime($compra["data_compra"])) ?><?= $compra["total_parcelas"] ? " · " . (int)$compra["parcela_atual"] . "/" . (int)$compra["total_parcelas"] : "" ?></div></div><div class="text-end"><div class="valor-financeiro fw-bold"><?= valorBrasileiro($compra["valor"]) ?></div><a class="small" href="?mes=<?= $mes ?>&ano=<?= $ano ?>&editar=<?= $compra["id"] ?>">Editar</a> · <a class="small text-danger" onclick="return confirm('Excluir esta compra?')" href="?mes=<?= $mes ?>&ano=<?= $ano ?>&excluir=<?= $compra["id"] ?>">Excluir</a></div></div><?php endforeach; if (!$lista): ?><div class="list-group-item text-muted">Nenhuma compra neste mês.</div><?php endif; ?></div>
+            <div class="list-group list-group-flush"><?php foreach ($lista as $compra): ?><div class="list-group-item d-flex justify-content-between gap-3"><div><strong><?= e($compra["descricao"]) ?></strong><div class="small text-muted"><?= e($compra["pessoa"]) ?> · <?= date("d/m/Y", strtotime($compra["data_compra"])) ?><?= $compra["total_parcelas"] ? " · " . (int)$compra["parcela_atual"] . "/" . (int)$compra["total_parcelas"] : "" ?></div></div><div class="text-end"><div class="fw-bold"><?= valorBrasileiro($compra["valor"]) ?></div><a class="small" href="?mes=<?= $mes ?>&ano=<?= $ano ?>&editar=<?= $compra["id"] ?>">Editar</a> · <a class="small text-danger" onclick="return confirm('Excluir esta compra?')" href="?mes=<?= $mes ?>&ano=<?= $ano ?>&excluir=<?= $compra["id"] ?>">Excluir</a></div></div><?php endforeach; if (!$lista): ?><div class="list-group-item text-muted">Nenhuma compra neste mês.</div><?php endif; ?></div>
         </article></div>
         <?php endforeach; ?>
     </div></section>
@@ -496,7 +558,7 @@ if (isset($_GET["editar"])) {
                                 <td><?= e($compra["categoria"]) ?></td>
                                 <td><?= date("d/m/Y", strtotime($compra["data_compra"])) ?></td>
                                 <td><?= $compra["total_parcelas"] ? (int)$compra["parcela_atual"] . "/" . (int)$compra["total_parcelas"] : "À vista" ?></td>
-                                <td class="text-end fw-bold valor-financeiro"><?= valorBrasileiro($compra["valor"]) ?></td>
+                                <td class="text-end fw-bold"><?= valorBrasileiro($compra["valor"]) ?></td>
                                 <td class="text-end">
                                     <?php if ($temSolicitacoesAjuste && !isset($comprasComSolicitacaoPendente[(int)$compra["id"]])): ?>
                                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('ajuste-<?= $compra["id"] ?>').classList.toggle('d-none')">Corrigir valor</button>
