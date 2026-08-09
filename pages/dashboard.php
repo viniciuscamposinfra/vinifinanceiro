@@ -63,6 +63,7 @@ $ehAdmin = in_array($tipo, ["admin", "administrador"], true);
 /* O login pode guardar o vínculo diretamente na sessão ou apenas o id do
    usuário. Os dois formatos são aceitos para manter as permissões antigas. */
 $pessoaId = (int)($_SESSION["pessoa_id"] ?? $_SESSION["id_pessoa"] ?? $_SESSION["pessoa"] ?? 0);
+
 if (!$ehAdmin && $pessoaId <= 0) {
     $colunaVinculo = colunaExiste($pdo, "usuarios", "pessoa_id") ? "pessoa_id"
         : (colunaExiste($pdo, "usuarios", "id_pessoa") ? "id_pessoa" : null);
